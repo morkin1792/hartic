@@ -1,0 +1,4 @@
+*.pyc
+.hartic_history
+*.log
+__pycache__
