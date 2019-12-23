@@ -1,6 +1,6 @@
 import cli, re, os, time, html
 from network import *
-from threading import Thread
+from threading import Thread, Lock
 from image import preprocessingImage, getPixelByColors
 
 class Hartic():
@@ -14,21 +14,31 @@ class Hartic():
         self.room_id = False
         self.nick = False
         self.word = False
+        self.lock = Lock()
+
+    def updateStatus(self, status):
+        ''' receive the status dict and update itself '''
+        if self.lock.acquire():
+            try:
+                for m in status['messages']:
+                    self.console.print('~' + html.unescape(m[0]) + ': ' + html.unescape(m[1]))
+                if status['word']:
+                    if not self.isDrawing():
+                        self.setDrawing(True, status['word'])
+                        self.net.acceptDraw()
+                        self.console.print('You turn! The word is ' + status['word'])
+                if status['endturn']:
+                    self.setDrawing(False)
+            finally:
+                self.lock.release()
+
 
     def getNews(self):
         while self.inGame():
             time.sleep(2)
-            news = self.net.getNews()
-            for m in news['messages']:
-                self.console.print('~' + html.unescape(m[0]) + ': ' + html.unescape(m[1]))
-            if news['word']:
-                if not self.isDrawing():
-                    self.setDrawing(True, news['word'])
-                    self.net.acceptDraw()
-                    self.console.print('You turn! The word is ' + news['word'])
-            if news['endturn']:
-                self.setDrawing(False)
-
+            status = self.net.getNews()
+            self.updateStatus(status)
+            
     def inGame(self):
         return self.entered
 
@@ -108,13 +118,19 @@ class Hartic():
 
     def sendTip(self, args):
         self.net.sendTip()
+    
+    def reportDraw(self, args):
+        self.net.reportDraw()
 
     def sendDraw(self, args):
         filepath = args[0]
+        
+        # params default
         colors = 12
         width = 125
         height = 70
 
+        # if any, get custom ones
         if len(args) > 1:
             width = int(args[1])
         if len(args) > 2:
@@ -122,11 +138,12 @@ class Hartic():
         if len(args) > 3:
             colors = int(args[3])
 
+
         scale = max(1, int(500/(width*0.94)))
 
         img = preprocessingImage(filepath, width, height, colors)
         pixels = getPixelByColors(img)
-        self.net.drawAllPixels(pixels, scale=scale)
+        self.updateStatus(self.net.drawAllPixels(pixels, scale=scale))
         # for color in pixels.keys():
         #     if not self.isDrawing(): #stop send pixels if time finished
         #         return 
@@ -147,7 +164,7 @@ class Hartic():
             '/enter': {
                 'meta': 'Enter in a room. e.g. /enter 01315840 hartic',
                 'func': self.enterRoom,
-                'args': lambda n:len(n) > 0 and (re.match('[0-9]{8}', n[0]) or re.search('gartic[.]com[.]br[/][0-9]{8}', n[0]))
+                'args': lambda n:len(n) > 0 and (re.match('[0-9]{5}', n[0]) or re.search('gartic[.]com[.]br[/][0-9]{5}', n[0]))
             },
             '/draw': {
                 'meta': 'e.g. /draw /tmp/a.jpg [125 70 16]',
@@ -171,6 +188,10 @@ class Hartic():
                 'meta': 'Quit from the current room',
                 'func': self.quitRoom
             },
+            '/report': {
+                'meta': 'Report the drawing',
+                'func': self.reportDraw
+            }
         }
         drawing = {
             '/draw': {

@@ -42,11 +42,10 @@ class Network():
             self.lastid = lastid.group(1)
         
 
-    def getNews(self):
-        urlopt = ''
-        if self.lastid:
-            urlopt = '&lastid=' + self.lastid
-        resp = self.sess.request('GET', self.url + '/room/news.php?cache=' + str(int(time.time())) + '000' + urlopt)
+    def verifyStatus(self, resp):
+        '''
+            show if the response has some important info about the game
+        '''
         lastid = re.search('^([0-9]+)@', resp.text)
         if lastid:
             self.lastid = lastid.group(1)
@@ -71,6 +70,13 @@ class Network():
                 ret['word'] = fword.group(1)
                 self.tipid = 0 #when starts drawing reset tipid
         return ret
+
+    def getNews(self):
+        urlopt = ''
+        if self.lastid:
+            urlopt = '&lastid=' + self.lastid
+        resp = self.sess.request('GET', self.url + '/room/news.php?cache=' + str(int(time.time())) + '000' + urlopt)
+        return self.verifyStatus(resp)
     
     def getComando(self, code, data, encode=False):
         comando = ''
@@ -89,7 +95,7 @@ class Network():
                 'comando': data
             }
         )
-        return r
+        return self.verifyStatus(r)
         
 
     def sendMessage(self, msg):
@@ -108,6 +114,9 @@ class Network():
         
     def skipTurn(self):
         self.sendAction('16', [''])
+
+    def reportDraw(self):
+        self.sendAction('20', [''])
 
     def setColor(self, hex_color: str):
         self.sendAction('5', ['x' + hex_color.upper()])
